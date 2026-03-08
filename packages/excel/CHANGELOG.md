@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Chores
+
+- Migrated to pnpm monorepo with `@office-agents/sdk`, `@office-agents/core`, and `@office-agents/excel` packages.
+- Extracted shared SDK (agent runtime, VFS, storage, tools) and core UI layer into separate packages.
+
 ## [0.2.4] - 2026-02-22
 
 ### Features

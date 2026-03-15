@@ -13,6 +13,8 @@ export function sandboxedEval(
       console,
       Math,
       Date,
+      atob: atob.bind(globalThis),
+      btoa: btoa.bind(globalThis),
       Function: undefined,
       Reflect: undefined,
       Proxy: undefined,

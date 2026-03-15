@@ -6,8 +6,10 @@
 
 - **@office-agents/sdk** (`packages/sdk/`) — Headless SDK: agent runtime, tools (bash, read), storage, VFS, skills, OAuth, web search/fetch, provider config
 - **@office-agents/core** (`packages/core/`) — React chat UI layer: re-exports SDK + ChatInterface, settings panel, sessions, message rendering
+- **@office-agents/bridge** (`packages/bridge/`) — Local HTTPS/WebSocket RPC bridge + CLI for talking to a live Office add-in runtime during development
 - **@office-agents/excel** (`packages/excel/`) — Excel Add-in: spreadsheet tools, Office.js wrappers, system prompt, cell-range follow mode
 - **@office-agents/powerpoint** (`packages/powerpoint/`) — PowerPoint Add-in: slide/OOXML tools, JSZip-based PPTX editing, system prompt
+- **@office-agents/word** (`packages/word/`) — Word Add-in: document text/structure/OOXML tools, screenshots, Office.js escape hatch
 
 ### Key Paths
 
@@ -16,11 +18,16 @@
 - `packages/sdk/src/vfs/` — Virtual filesystem + custom commands (`setCustomCommands`)
 - `packages/sdk/src/storage/` — IndexedDB sessions, VFS file persistence, skills
 - `packages/core/src/chat/` — React chat components (`chat-interface.tsx`, `chat-context.tsx`, `app-adapter.ts`, `settings-panel.tsx`)
-- `packages/excel/src/lib/adapter.ts` — Excel `AppAdapter` (tools, prompt, metadata, follow mode)
+- `packages/bridge/src/server.ts` — Local HTTPS/WebSocket bridge server and session registry
+- `packages/bridge/src/client.ts` — Add-in bridge client that connects from the Office taskpane to the local bridge
+- `packages/bridge/src/cli.ts` — `office-bridge` CLI (`list`, `inspect`, `metadata`, `tool`, `exec`, `events`)
+- `packages/excel/src/lib/adapter.tsx` — Excel `AppAdapter` (tools, prompt, metadata, follow mode)
 - `packages/excel/src/lib/tools/` — Excel-specific tools (`set-cell-range`, `get-cell-ranges`, `eval-officejs`, etc.)
 - `packages/powerpoint/src/lib/adapter.tsx` — PowerPoint `AppAdapter` (tools, prompt, metadata)
 - `packages/powerpoint/src/lib/tools/` — PPT tools (`edit-slide-xml`, `screenshot-slide`, `edit-slide-chart`, etc.)
 - `packages/powerpoint/src/lib/pptx/` — OOXML/PPTX helpers (`slide-zip.ts`, `xml-utils.ts`)
+- `packages/word/src/lib/adapter.tsx` — Word `AppAdapter` (tools, prompt, metadata)
+- `packages/word/src/lib/tools/` — Word tools (`get-document-text`, `get-document-structure`, `get-paragraph-ooxml`, `screenshot-document`, `execute-office-js`)
 
 ## Tech Stack
 
@@ -67,10 +74,15 @@ App-specific VFS commands are registered via `setCustomCommands()` from SDK. Exc
 
 ```bash
 pnpm install             # Install all dependencies
+pnpm bridge:serve        # Start the local Office RPC bridge server (https://localhost:4017)
+pnpm bridge:stop         # Stop the local Office RPC bridge server
+pnpm exec office-bridge list  # List live Office bridge sessions
 pnpm dev-server:excel    # Start Excel dev server (https://localhost:3000)
 pnpm dev-server:ppt      # Start PowerPoint dev server (https://localhost:3001)
+pnpm dev-server:word     # Start Word dev server (https://localhost:3002)
 pnpm start:excel         # Launch Excel with add-in sideloaded
 pnpm start:ppt           # Launch PowerPoint with add-in sideloaded
+pnpm start:word          # Launch Word with add-in sideloaded
 pnpm build               # Build all packages
 pnpm lint                # Run Biome linter
 pnpm format              # Format code with Biome
@@ -78,6 +90,37 @@ pnpm typecheck           # TypeScript type checking (all packages)
 pnpm check               # Typecheck + lint
 pnpm validate            # Validate Office manifests
 ```
+
+### Office Bridge
+
+During development, the Office taskpane auto-connects to the local bridge client on localhost. Use the bridge to inspect the real Office runtime and run tools against the live add-in:
+
+```bash
+pnpm bridge:serve
+pnpm bridge:stop
+pnpm exec office-bridge list
+pnpm exec office-bridge inspect word
+pnpm exec office-bridge metadata word
+pnpm exec office-bridge tool word get_document_text
+pnpm exec office-bridge exec word --code "return { href: window.location.href, title: document.title }"  # unsafe direct eval by default
+pnpm exec office-bridge exec word --sandbox --code "const body = context.document.body; body.load('text'); await context.sync(); return body.text;"
+pnpm exec office-bridge screenshot word --pages 1 --out page1.png
+pnpm exec office-bridge vfs ls word /home/user
+pnpm exec office-bridge vfs pull word /home/user/uploads/report.docx ./report.docx
+pnpm exec office-bridge vfs push word ./local.txt /home/user/uploads/local.txt
+```
+
+`office-bridge exec` runs code with full taskpane/runtime access by default during development. Use `--sandbox` to route through the existing app escape-hatch tool instead.
+
+Use `office-bridge screenshot ... --out file.png` for a simple screenshot-to-local-file workflow, or `office-bridge tool ... --out file.png` for image-returning tool calls. The CLI strips image base64 from printed JSON output to avoid blowing up model context windows.
+
+`pnpm bridge:serve` reuses an already-running healthy bridge server on port `4017` instead of failing with `EADDRINUSE`.
+
+Bridge defaults:
+
+- HTTPS API: `https://localhost:4017`
+- WebSocket: `wss://localhost:4017/ws`
+- Package docs: `packages/bridge/README.md`
 
 ## Code Style
 
@@ -89,20 +132,22 @@ pnpm validate            # Validate Office manifests
 
 Each app is released independently with its own version tag, changelog, and Cloudflare Pages project.
 
-| Package    | Tag prefix  | Changelog                          | Deploy target    |
-| ---------- | ----------- | ---------------------------------- | ---------------- |
-| Excel      | `excel-v*`  | `packages/excel/CHANGELOG.md`      | CF Pages `openexcel` |
-| PowerPoint | `ppt-v*`    | `packages/powerpoint/CHANGELOG.md` | CF Pages `openppt`   |
-| SDK        | `sdk-v*`    | `packages/sdk/CHANGELOG.md`        | npm `@office-agents/sdk` |
+| Package    | Tag prefix    | Changelog                          | Deploy target    |
+| ---------- | ------------- | ---------------------------------- | ---------------- |
+| Excel      | `excel-v*`    | `packages/excel/CHANGELOG.md`      | CF Pages `openexcel` |
+| PowerPoint | `ppt-v*`      | `packages/powerpoint/CHANGELOG.md` | CF Pages `openppt`   |
+| SDK        | `sdk-v*`      | `packages/sdk/CHANGELOG.md`        | npm `@office-agents/sdk` |
+| Bridge     | `bridge-v*`   | `packages/bridge/CHANGELOG.md`     | npm `@office-agents/bridge` |
 
 ### Steps (per app)
 
 1. Add changes under `## [Unreleased]` in the app's `CHANGELOG.md`
 2. Run the release script:
    ```bash
-   pnpm release:excel patch   # or minor/major
-   pnpm release:ppt patch     # or minor/major
-   pnpm release:sdk patch     # or minor/major
+   pnpm release:excel patch    # or minor/major
+   pnpm release:ppt patch      # or minor/major
+   pnpm release:sdk patch      # or minor/major
+   pnpm release:bridge patch   # or minor/major
    ```
 3. The script bumps the version, stamps the changelog, commits, tags (`excel-v*` / `ppt-v*`), and pushes
 4. CI builds, deploys to Cloudflare Pages, and creates a GitHub release
@@ -132,6 +177,8 @@ await Excel.run(async (context) => {
 ```
 
 ## References
+
+- `packages/bridge/README.md` — bridge usage and CLI docs
 
 - [Office Add-ins Documentation](https://learn.microsoft.com/en-us/office/dev/add-ins/)
 - [Excel JavaScript API](https://learn.microsoft.com/en-us/javascript/api/excel)

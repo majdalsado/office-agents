@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
+  FolderOpen,
   MessageSquare,
   Moon,
   Plus,
@@ -23,6 +24,7 @@ import {
 import type { AppAdapter } from "./app-adapter";
 import { ChatProvider, useChat } from "./chat-context";
 import { ChatInput } from "./chat-input";
+import { FilesPanel } from "./files-panel";
 import { MessageList } from "./message-list";
 import { SettingsPanel } from "./settings-panel";
 import type { ChatTab } from "./types";
@@ -298,8 +300,10 @@ function ChatHeader({
   theme: Theme;
   onThemeToggle: () => void;
 }) {
-  const { clearMessages, state, toggleFollowMode } = useChat();
+  const { adapter, clearMessages, state, toggleFollowMode } = useChat();
   const followMode = state.providerConfig?.followMode ?? true;
+  const HeaderExtras = adapter.HeaderExtras;
+  const showFollowModeToggle = adapter.showFollowModeToggle ?? true;
 
   return (
     <div className="border-b border-(--chat-border) bg-(--chat-bg)">
@@ -314,6 +318,13 @@ function ChatHeader({
             </TabButton>
           )}
           <TabButton
+            active={activeTab === "files"}
+            onClick={() => onTabChange("files")}
+          >
+            <FolderOpen size={12} />
+            Files
+          </TabButton>
+          <TabButton
             active={activeTab === "settings"}
             onClick={() => onTabChange("settings")}
           >
@@ -322,7 +333,8 @@ function ChatHeader({
           </TabButton>
         </div>
         <div className="flex items-center">
-          {activeTab === "chat" && (
+          {activeTab === "chat" && HeaderExtras && <HeaderExtras />}
+          {activeTab === "chat" && showFollowModeToggle && (
             <button
               type="button"
               onClick={toggleFollowMode}
@@ -331,11 +343,7 @@ function ChatHeader({
                   ? "text-(--chat-accent) hover:text-(--chat-text-primary)"
                   : "text-(--chat-text-muted) hover:text-(--chat-text-primary)"
               }`}
-              title={
-                followMode
-                  ? "Follow mode: ON - Click to disable"
-                  : "Follow mode: OFF - Click to enable"
-              }
+              data-tooltip={followMode ? "Follow mode: ON" : "Follow mode: OFF"}
             >
               {followMode ? <Eye size={14} /> : <EyeOff size={14} />}
             </button>
@@ -344,9 +352,7 @@ function ChatHeader({
             type="button"
             onClick={onThemeToggle}
             className="p-1.5 text-(--chat-text-muted) hover:text-(--chat-text-primary) transition-colors"
-            title={
-              theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
-            }
+            data-tooltip={theme === "dark" ? "Light mode" : "Dark mode"}
           >
             {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
           </button>
@@ -355,7 +361,7 @@ function ChatHeader({
               type="button"
               onClick={clearMessages}
               className="p-1.5 text-(--chat-text-muted) hover:text-(--chat-error) transition-colors"
-              title="Clear messages"
+              data-tooltip="Clear messages"
             >
               <Trash2 size={14} />
             </button>
@@ -439,6 +445,8 @@ function ChatContent() {
           <ChatInput />
           <StatsBar />
         </>
+      ) : activeTab === "files" ? (
+        <FilesPanel />
       ) : (
         <SettingsPanel />
       )}
